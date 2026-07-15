@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Civic Connect — Citizen Grievance Platform</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="hero">
+        <div class="brand-header">
+            <div style="font-size:2.5rem; margin-bottom:0.5rem;">🏛️</div>
+        </div>
+        <h1>CIVIC CONNECT</h1>
+        <p class="tagline">Empowering Citizens Through Transparent Governance</p>
+
+        <div class="kural">
+            "செவிகைப்பச் சொற்பொறுக்கும் பண்புடை வேந்தன்<br>
+            கவிகைக்கீழ்த் தங்கும் உலகு"
+        </div>
+        <p class="kural-meaning">
+            "A good administration listens patiently to the concerns of its citizens."
+            <br>— Thirukkural
+        </p>
+
+        <div class="hero-actions">
+            <a href="/login.html" class="btn btn-gold">Login</a>
+            <a href="/register.html" class="btn btn-outline" style="border-color:rgba(255,255,255,0.4); color:#fff;">Register</a>
+        </div>
+    </div>
+
+    <script>
+        // If already logged in, redirect to dashboard
+        const token = localStorage.getItem('token');
+        const role = localStorage.getItem('userRole');
+        if (token && role) {
+            if (role === 'CITIZEN') window.location.href = '/citizen-dashboard.html';
+            else if (role === 'ADMIN') window.location.href = '/admin-dashboard.html';
+            else if (role === 'DEPARTMENT') window.location.href = '/dept-dashboard.html';
+        }
+    </script>
+</body>
+</html>

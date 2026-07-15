@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complaint Detail — Civic Connect</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div id="navbar"></div>
+
+    <div class="page-container" style="max-width:750px;">
+        <div id="alertBox"></div>
+        <div id="detailArea">
+            <p class="text-muted text-center">Loading...</p>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        if (!requireAuth()) throw 'redirect';
+
+        const role = getUserRole();
+        if (role === 'CITIZEN') renderNavbar('track');
+        else if (role === 'ADMIN') renderNavbar('complaints');
+        else renderNavbar('dashboard');
+
+        const params = new URLSearchParams(window.location.search);
+        const complaintId = params.get('id');
+
+        if (!complaintId) {
+            document.getElementById('detailArea').innerHTML = '<div class="empty-state"><p>No complaint ID provided.</p></div>';
+        } else {
+            loadDetail();
+        }
+
+        async function loadDetail() {
+            try {
+                let url;
+                if (role === 'ADMIN') url = '/admin/complaints/' + complaintId;
+                else if (role === 'DEPARTMENT') url = '/department/complaints/' + complaintId;
+                else url = '/complaints/' + complaintId;
+
+                const result = await api.get(url);
+
+                if (!result.success) {
+                    showAlert(document.getElementById('alertBox'), result.message);
+                    return;
+                }
+
+                const c = result.data;
+                renderDetail(c);
+            } catch (err) {
+                showAlert(document.getElementById('alertBox'), 'Failed to load complaint');
+            }
+        }
+
+        function renderDetail(c) {
+            const isCitizen = role === 'CITIZEN';
+            const canVerify = isCitizen && c.status === 'RESOLVED';
+
+            let html = `
+                <div class="page-header">
+                    <h2>Complaint #${c.complaintId}</h2>
+                    <span class="status-badge status-${c.status}" style="font-size:0.9rem; padding:0.3rem 0.8rem;">
+                        ${formatStatus(c.status)}
+                    </span>
+                </div>
+
+                <div class="card">
+                    <h3 style="margin:0 0 1rem; color:var(--navy);">${c.title}</h3>
+
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">Category</span>
+                            <span class="detail-value">${formatCategory(c.category)}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Filed On</span>
+                            <span class="detail-value">${formatDate(c.createdAt)}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Location</span>
+                            <span class="detail-value">${c.location || 'Not specified'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Filed By</span>
+                            <span class="detail-value">${c.citizenName}</span>
+                        </div>
+                        ${c.departmentName ? `
+                        <div class="detail-item">
+                            <span class="detail-label">Department</span>
+                            <span class="detail-value">${c.departmentName}</span>
+                        </div>` : ''}
+                        ${c.assignedOfficerName ? `
+                        <div class="detail-item">
+                            <span class="detail-label">Assigned Officer</span>
+                            <span class="detail-value">${c.assignedOfficerName}</span>
+                        </div>` : ''}
+                    </div>
+
+                    <div style="margin-top:1rem;">
+                        <span class="detail-label">Description</span>
+                        <p style="margin:0.25rem 0 0; line-height:1.7;">${c.description}</p>
+                    </div>
+
+                    ${c.imageUrl ? `
+                    <div style="margin-top:1rem;">
+                        <span class="detail-label">Attached Image</span>
+                        <div style="margin-top:0.5rem;">
+                            <img src="${c.imageUrl}" alt="Complaint image"
+                                 style="max-width:100%; border-radius:6px; border:1px solid var(--border);"
+                                 onerror="this.style.display='none'">
+                        </div>
+                    </div>` : ''}
+                </div>`;
+
+            // Verify / Reopen buttons for citizen
+            if (canVerify) {
+                html += `
+                <div class="card" style="border-left:3px solid var(--green);">
+                    <h3 style="margin:0 0 0.5rem; color:var(--green);">Resolution Complete</h3>
+                    <p class="text-muted text-sm" style="margin:0 0 1rem;">
+                        The department has marked this as resolved. Please verify if the issue is actually fixed.
+                    </p>
+                    <div class="flex-gap">
+                        <button class="btn btn-success" onclick="verifyComplaint()">
+                            ✓ Verified — Issue Resolved
+                        </button>
+                        <button class="btn btn-danger" onclick="showReopenForm()">
+                            ✗ Not Resolved — Reopen
+                        </button>
+                    </div>
+                    <div id="reopenForm" class="hidden" style="margin-top:1rem;">
+                        <div class="form-group">
+                            <label>Why is this not resolved?</label>
+                            <textarea id="reopenReason" class="form-control" rows="3"
+                                      placeholder="Explain what's still wrong..."></textarea>
+                        </div>
+                        <button class="btn btn-danger btn-sm" onclick="reopenComplaint()">Submit & Reopen</button>
+                    </div>
+                </div>`;
+            }
+
+            // Updates timeline
+            if (c.updates && c.updates.length > 0) {
+                html += `
+                <div class="card">
+                    <h3 style="margin:0 0 1rem; color:var(--navy);">Activity Timeline</h3>
+                    <div class="timeline">`;
+
+                c.updates.forEach(u => {
+                    html += `
+                    <div class="timeline-item">
+                        <div class="tl-status">
+                            <span class="status-badge status-${u.status}">${formatStatus(u.status)}</span>
+                        </div>
+                        ${u.remarks ? `<div class="tl-remarks">${u.remarks}</div>` : ''}
+                        <div class="tl-meta">${u.officerName} — ${formatDate(u.updateDate)}</div>
+                        ${u.proofImageUrl ? `<img src="${u.proofImageUrl}" alt="Proof"
+                            style="max-width:200px; border-radius:4px; margin-top:0.5rem; border:1px solid var(--border);"
+                            onerror="this.style.display='none'">` : ''}
+                    </div>`;
+                });
+
+                html += '</div></div>';
+            }
+
+            // Back button
+            html += `<div style="margin-top:1rem;">
+                <button class="btn btn-outline btn-sm" onclick="history.back()">← Back</button>
+            </div>`;
+
+            document.getElementById('detailArea').innerHTML = html;
+        }
+
+        function showReopenForm() {
+            document.getElementById('reopenForm').classList.remove('hidden');
+        }
+
+        async function verifyComplaint() {
+            try {
+                const result = await api.put('/complaints/' + complaintId + '/verify', {});
+                if (result.success) {
+                    showAlert(document.getElementById('alertBox'), 'Thank you! Complaint verified.', 'success');
+                    setTimeout(loadDetail, 1000);
+                } else {
+                    showAlert(document.getElementById('alertBox'), result.message);
+                }
+            } catch (err) {
+                showAlert(document.getElementById('alertBox'), 'Failed to verify');
+            }
+        }
+
+        async function reopenComplaint() {
+            const reason = document.getElementById('reopenReason').value.trim();
+            try {
+                const result = await api.put('/complaints/' + complaintId + '/reopen', { reason });
+                if (result.success) {
+                    showAlert(document.getElementById('alertBox'), 'Complaint reopened.', 'info');
+                    setTimeout(loadDetail, 1000);
+                } else {
+                    showAlert(document.getElementById('alertBox'), result.message);
+                }
+            } catch (err) {
+                showAlert(document.getElementById('alertBox'), 'Failed to reopen');
+            }
+        }
+    </script>
+</body>
+</html>

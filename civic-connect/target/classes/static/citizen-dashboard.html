@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard — Civic Connect</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div id="navbar"></div>
+
+    <div class="page-container">
+        <div class="page-header">
+            <h2>My Dashboard</h2>
+            <a href="/citizen-submit.html" class="btn btn-gold">+ New Complaint</a>
+        </div>
+
+        <div id="alertBox"></div>
+
+        <!-- Stats -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-value" id="statTotal">—</div>
+                <div class="stat-label">Total</div>
+            </div>
+            <div class="stat-card submitted">
+                <div class="stat-value" id="statSubmitted">—</div>
+                <div class="stat-label">Submitted</div>
+            </div>
+            <div class="stat-card in-progress">
+                <div class="stat-value" id="statInProgress">—</div>
+                <div class="stat-label">In Progress</div>
+            </div>
+            <div class="stat-card resolved">
+                <div class="stat-value" id="statResolved">—</div>
+                <div class="stat-label">Resolved</div>
+            </div>
+            <div class="stat-card verified">
+                <div class="stat-value" id="statVerified">—</div>
+                <div class="stat-label">Verified</div>
+            </div>
+        </div>
+
+        <!-- Recent Complaints -->
+        <h3 style="color:var(--navy); margin-bottom:0.75rem;">Recent Complaints</h3>
+        <div id="complaintsArea">
+            <p class="text-muted text-center">Loading...</p>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        if (!requireAuth(['CITIZEN'])) throw 'redirect';
+        renderNavbar('dashboard');
+
+        loadDashboard();
+
+        async function loadDashboard() {
+            try {
+                const result = await api.get('/complaints/my');
+                if (!result.success) {
+                    showAlert(document.getElementById('alertBox'), result.message);
+                    return;
+                }
+
+                const complaints = result.data;
+
+                // Calculate stats from the list
+                const stats = {
+                    total: complaints.length,
+                    submitted: complaints.filter(c => c.status === 'SUBMITTED').length,
+                    inProgress: complaints.filter(c => ['ASSIGNED','IN_PROGRESS'].includes(c.status)).length,
+                    resolved: complaints.filter(c => c.status === 'RESOLVED').length,
+                    verified: complaints.filter(c => c.status === 'VERIFIED').length
+                };
+
+                document.getElementById('statTotal').textContent = stats.total;
+                document.getElementById('statSubmitted').textContent = stats.submitted;
+                document.getElementById('statInProgress').textContent = stats.inProgress;
+                document.getElementById('statResolved').textContent = stats.resolved;
+                document.getElementById('statVerified').textContent = stats.verified;
+
+                if (complaints.length === 0) {
+                    document.getElementById('complaintsArea').innerHTML = `
+                        <div class="empty-state">
+                            <p>You haven't submitted any complaints yet.</p>
+                            <a href="/citizen-submit.html" class="btn btn-gold">Submit Your First Complaint</a>
+                        </div>`;
+                    return;
+                }
+
+                // Show last 5
+                const recent = complaints.slice(0, 5);
+                let html = '<div class="card" style="padding:0; overflow:hidden;">';
+                html += `<table class="complaint-table">
+                    <thead><tr>
+                        <th>ID</th><th>Title</th><th>Category</th><th>Status</th><th>Date</th>
+                    </tr></thead><tbody>`;
+
+                recent.forEach(c => {
+                    html += `<tr onclick="window.location='/complaint-detail.html?id=${c.complaintId}'" style="cursor:pointer;">
+                        <td>#${c.complaintId}</td>
+                        <td class="title-cell">${c.title}</td>
+                        <td>${formatCategory(c.category)}</td>
+                        <td><span class="status-badge status-${c.status}">${formatStatus(c.status)}</span></td>
+                        <td class="text-sm text-muted">${formatDate(c.createdAt)}</td>
+                    </tr>`;
+                });
+
+                html += '</tbody></table></div>';
+
+                if (complaints.length > 5) {
+                    html += '<p class="text-center mt-1"><a href="/citizen-track.html" style="color:var(--navy); font-weight:600;">View all complaints →</a></p>';
+                }
+
+                document.getElementById('complaintsArea').innerHTML = html;
+
+            } catch (err) {
+                showAlert(document.getElementById('alertBox'), 'Failed to load dashboard');
+            }
+        }
+    </script>
+</body>
+</html>

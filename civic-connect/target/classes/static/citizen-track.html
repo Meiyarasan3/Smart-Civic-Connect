@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Track Complaints — Civic Connect</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div id="navbar"></div>
+
+    <div class="page-container">
+        <div class="page-header">
+            <h2>My Complaints</h2>
+            <a href="/citizen-submit.html" class="btn btn-gold btn-sm">+ New Complaint</a>
+        </div>
+
+        <div id="alertBox"></div>
+
+        <!-- Filter -->
+        <div class="filter-bar" id="filterBar">
+            <button class="btn btn-outline btn-sm active" onclick="filterComplaints('ALL')">All</button>
+            <button class="btn btn-outline btn-sm" onclick="filterComplaints('SUBMITTED')">Submitted</button>
+            <button class="btn btn-outline btn-sm" onclick="filterComplaints('ASSIGNED')">Assigned</button>
+            <button class="btn btn-outline btn-sm" onclick="filterComplaints('IN_PROGRESS')">In Progress</button>
+            <button class="btn btn-outline btn-sm" onclick="filterComplaints('RESOLVED')">Resolved</button>
+            <button class="btn btn-outline btn-sm" onclick="filterComplaints('VERIFIED')">Verified</button>
+            <button class="btn btn-outline btn-sm" onclick="filterComplaints('REOPENED')">Reopened</button>
+        </div>
+
+        <div id="complaintsArea">
+            <p class="text-muted text-center">Loading...</p>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        if (!requireAuth(['CITIZEN'])) throw 'redirect';
+        renderNavbar('track');
+
+        let allComplaints = [];
+
+        loadComplaints();
+
+        async function loadComplaints() {
+            try {
+                const result = await api.get('/complaints/my');
+                if (result.success) {
+                    allComplaints = result.data;
+                    renderComplaints(allComplaints);
+                } else {
+                    showAlert(document.getElementById('alertBox'), result.message);
+                }
+            } catch (err) {
+                showAlert(document.getElementById('alertBox'), 'Failed to load complaints');
+            }
+        }
+
+        function filterComplaints(status) {
+            // Update active button
+            document.querySelectorAll('#filterBar .btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+
+            if (status === 'ALL') {
+                renderComplaints(allComplaints);
+            } else {
+                renderComplaints(allComplaints.filter(c => c.status === status));
+            }
+        }
+
+        function renderComplaints(list) {
+            const area = document.getElementById('complaintsArea');
+
+            if (list.length === 0) {
+                area.innerHTML = '<div class="empty-state"><p>No complaints found.</p></div>';
+                return;
+            }
+
+            let html = '<div class="card" style="padding:0; overflow-x:auto;">';
+            html += `<table class="complaint-table">
+                <thead><tr>
+                    <th>ID</th><th>Title</th><th>Category</th><th>Location</th><th>Status</th><th>Date</th>
+                </tr></thead><tbody>`;
+
+            list.forEach(c => {
+                html += `<tr onclick="window.location='/complaint-detail.html?id=${c.complaintId}'" style="cursor:pointer;">
+                    <td>#${c.complaintId}</td>
+                    <td class="title-cell">${c.title}</td>
+                    <td>${formatCategory(c.category)}</td>
+                    <td class="text-sm">${c.location || '—'}</td>
+                    <td><span class="status-badge status-${c.status}">${formatStatus(c.status)}</span></td>
+                    <td class="text-sm text-muted">${formatDate(c.createdAt)}</td>
+                </tr>`;
+            });
+
+            html += '</tbody></table></div>';
+            area.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

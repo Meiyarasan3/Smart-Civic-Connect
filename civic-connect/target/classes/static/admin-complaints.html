@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Complaints — Civic Connect</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div id="navbar"></div>
+
+    <div class="page-container">
+        <div class="page-header">
+            <h2>Manage Complaints</h2>
+        </div>
+
+        <div id="alertBox"></div>
+
+        <!-- Filter bar -->
+        <div class="filter-bar" id="filterBar">
+            <button class="btn btn-outline btn-sm active" onclick="filterBy('ALL')">All</button>
+            <button class="btn btn-outline btn-sm" onclick="filterBy('SUBMITTED')">Submitted</button>
+            <button class="btn btn-outline btn-sm" onclick="filterBy('ASSIGNED')">Assigned</button>
+            <button class="btn btn-outline btn-sm" onclick="filterBy('IN_PROGRESS')">In Progress</button>
+            <button class="btn btn-outline btn-sm" onclick="filterBy('RESOLVED')">Resolved</button>
+            <button class="btn btn-outline btn-sm" onclick="filterBy('VERIFIED')">Verified</button>
+            <button class="btn btn-outline btn-sm" onclick="filterBy('REOPENED')">Reopened</button>
+        </div>
+
+        <div id="complaintsArea">
+            <p class="text-muted text-center">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Assignment Modal -->
+    <div id="assignModal" class="modal-overlay hidden" onclick="closeModal(event)">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <h3>Assign Complaint</h3>
+            <p id="assignInfo" class="text-muted text-sm"></p>
+
+            <div id="modalAlert"></div>
+
+            <div class="form-group">
+                <label for="deptName">Department</label>
+                <select id="deptName" class="form-control">
+                    <option value="">— Select Department —</option>
+                    <option value="Roads & Infrastructure">Roads & Infrastructure</option>
+                    <option value="Sanitation & Waste">Sanitation & Waste</option>
+                    <option value="Water Supply">Water Supply</option>
+                    <option value="Electricity & Lighting">Electricity & Lighting</option>
+                    <option value="Drainage & Sewage">Drainage & Sewage</option>
+                    <option value="General Administration">General Administration</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="officerSelect">Assign To Officer (Optional)</label>
+                <select id="officerSelect" class="form-control">
+                    <option value="">— Auto-assign —</option>
+                </select>
+            </div>
+
+            <div class="flex-gap" style="margin-top:1rem;">
+                <button class="btn btn-gold" onclick="submitAssignment()">Assign</button>
+                <button class="btn btn-outline" onclick="hideModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        if (!requireAuth(['ADMIN'])) throw 'redirect';
+        renderNavbar('complaints');
+
+        let allComplaints = [];
+        let officers = [];
+        let assigningComplaintId = null;
+
+        loadData();
+
+        async function loadData() {
+            try {
+                const [compRes, offRes] = await Promise.all([
+                    api.get('/admin/complaints'),
+                    api.get('/admin/officers')
+                ]);
+
+                if (compRes.success) {
+                    allComplaints = compRes.data;
+                    renderTable(allComplaints);
+                }
+
+                if (offRes.success) {
+                    officers = offRes.data;
+                    const sel = document.getElementById('officerSelect');
+                    officers.forEach(o => {
+                        sel.innerHTML += `<option value="${o.userId}">${o.name} (${o.email})</option>`;
+                    });
+                }
+
+            } catch (err) {
+                showAlert(document.getElementById('alertBox'), 'Failed to load data');
+            }
+        }
+
+        function filterBy(status) {
+            document.querySelectorAll('#filterBar .btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+
+            if (status === 'ALL') renderTable(allComplaints);
+            else renderTable(allComplaints.filter(c => c.status === status));
+        }
+
+        function renderTable(list) {
+            const area = document.getElementById('complaintsArea');
+
+            if (list.length === 0) {
+                area.innerHTML = '<div class="empty-state"><p>No complaints found.</p></div>';
+                return;
+            }
+
+            let html = '<div class="card" style="padding:0; overflow-x:auto;">';
+            html += `<table class="complaint-table">
+                <thead><tr>
+                    <th>ID</th><th>Title</th><th>Citizen</th><th>Category</th><th>Status</th><th>Date</th><th>Action</th>
+                </tr></thead><tbody>`;
+
+            list.forEach(c => {
+                const canAssign = ['SUBMITTED', 'REOPENED'].includes(c.status);
+                html += `<tr>
+                    <td>#${c.complaintId}</td>
+                    <td class="title-cell" onclick="window.location='/complaint-detail.html?id=${c.complaintId}'">${c.title}</td>
+                    <td class="text-sm">${c.citizenName}</td>
+                    <td>${formatCategory(c.category)}</td>
+                    <td><span class="status-badge status-${c.status}">${formatStatus(c.status)}</span></td>
+                    <td class="text-sm text-muted">${formatDate(c.createdAt)}</td>
+                    <td>
+                        ${canAssign ?
+                            `<button class="btn btn-gold btn-sm" onclick="openAssignModal(${c.complaintId}, '${c.title}')">Assign</button>` :
+                            `<button class="btn btn-outline btn-sm" onclick="window.location='/complaint-detail.html?id=${c.complaintId}'">View</button>`
+                        }
+                    </td>
+                </tr>`;
+            });
+
+            html += '</tbody></table></div>';
+            area.innerHTML = html;
+        }
+
+        function openAssignModal(id, title) {
+            assigningComplaintId = id;
+            document.getElementById('assignInfo').textContent = `Complaint #${id}: ${title}`;
+            document.getElementById('assignModal').classList.remove('hidden');
+        }
+
+        function hideModal() {
+            document.getElementById('assignModal').classList.add('hidden');
+            assigningComplaintId = null;
+        }
+
+        function closeModal(e) {
+            if (e.target === document.getElementById('assignModal')) hideModal();
+        }
+
+        async function submitAssignment() {
+            const deptName = document.getElementById('deptName').value;
+            const officerId = document.getElementById('officerSelect').value;
+            const modalAlert = document.getElementById('modalAlert');
+
+            if (!deptName) {
+                showAlert(modalAlert, 'Please select a department');
+                return;
+            }
+
+            const body = {
+                complaintId: assigningComplaintId,
+                departmentName: deptName,
+                assignedToOfficerId: officerId ? parseInt(officerId) : null
+            };
+
+            try {
+                const result = await api.post('/admin/assign', body);
+                if (result.success) {
+                    hideModal();
+                    showAlert(document.getElementById('alertBox'), 'Complaint assigned successfully!', 'success');
+                    // Refresh data
+                    const compRes = await api.get('/admin/complaints');
+                    if (compRes.success) {
+                        allComplaints = compRes.data;
+                        renderTable(allComplaints);
+                    }
+                } else {
+                    showAlert(modalAlert, result.message);
+                }
+            } catch (err) {
+                showAlert(modalAlert, 'Assignment failed');
+            }
+        }
+    </script>
+</body>
+</html>
